@@ -1,6 +1,38 @@
-site_name: Docs as Code
+site_name: Классификатор изображений — Docs as Code
 theme:
   name: readthedocs
+  locale: ru
 
 plugins:
   - search
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+
+extra_css:
+  - css/extra.css
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js
+  - js/mermaid-init.js
+
+nav:
+  - Главная: index.md
+  - Проект:
+      - Описание: project/overview.md
+      - Требования: project/requirements.md
+      - Диаграммы: project/diagrams.md
+  - API:
+      - Описание API: api/index.md
+      - Swagger UI: api/swagger.md
+  - ML:
+      - Model Card: ml/model-card.md
+      - Data Sheet: ml/dataset.md
+      - Риски: ml/risks.md

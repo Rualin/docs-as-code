@@ -1,0 +1,11 @@
+/* более широкая колонка контента — для таблиц и диаграмм */
+.wy-nav-content { max-width: 1200px; }
+
+/* тема readthedocs по умолчанию запрещает перенос строк в таблицах */
+.wy-table-responsive table td,
+.wy-table-responsive table th { white-space: normal; }
+
+/* широкие Mermaid-диаграммы прокручиваются внутри блока, а не сжимаются до нечитаемого размера */
+.mermaid { overflow-x: auto; }
+.mermaid svg[aria-roledescription="class"],
+.mermaid svg[aria-roledescription="classDiagram"] { min-width: 1100px; }
