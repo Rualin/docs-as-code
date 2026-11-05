@@ -1,2 +1,5 @@
-# docs-as-code
-# docs as code
+# Docs as code
+
+Практическая работа по настройке среды Docs as Code.
+
+Автор: Юрий Фатеев
