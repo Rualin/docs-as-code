@@ -1,0 +1,345 @@
+openapi: 3.0.3
+
+info:
+  title: Image Classifier API
+  description: |
+    API ИИ-сервиса «Классификатор изображений».
+
+    Сервис принимает фотографию, передаёт её ML-модели классификации изображений
+    (Vision Transformer, `google/vit-base-patch16-224`) и возвращает наиболее
+    вероятные категории объекта с уверенностью модели.
+
+    Результат сформирован ИИ и может быть ошибочным. Если уверенность лучшей
+    категории ниже порога (по умолчанию 0.5), в ответе выставляется флаг `lowConfidence`.
+  version: 1.0.0
+
+servers:
+  - url: https://example.com/api/v1
+    description: Условный сервер (реальный backend не разрабатывается)
+
+tags:
+  - name: Classifications
+    description: Классификация изображений и получение результатов
+  - name: Categories
+    description: Справочник категорий, которые распознаёт модель
+
+paths:
+  /classifications:
+    post:
+      tags: [Classifications]
+      operationId: createClassification
+      summary: Классифицировать изображение
+      description: |
+        Принимает изображение (JPEG или PNG, до 10 МБ), определяет категорию объекта
+        и сохраняет результат. Возвращает top-N категорий, отсортированных по убыванию уверенности.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClassificationRequest'
+            encoding:
+              image:
+                contentType: image/jpeg, image/png
+      responses:
+        '201':
+          description: Классификация выполнена, результат сохранён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationResult'
+        '400':
+          description: Некорректный запрос (файл не передан, параметр topK вне диапазона)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: IMAGE_REQUIRED
+                message: Field 'image' is required
+        '413':
+          description: Размер файла превышает 10 МБ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: IMAGE_TOO_LARGE
+                message: Image size must not exceed 10 MB
+        '415':
+          description: Неподдерживаемый формат файла
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_FORMAT
+                message: Only JPEG and PNG images are supported
+        '422':
+          description: Файл повреждён и не может быть прочитан как изображение
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: IMAGE_UNREADABLE
+                message: Image file is corrupted
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ModelUnavailable'
+
+  /classifications/{id}:
+    get:
+      tags: [Classifications]
+      operationId: getClassification
+      summary: Получить результат классификации
+      description: Возвращает ранее сохранённый результат классификации по его идентификатору.
+      parameters:
+        - $ref: '#/components/parameters/ClassificationId'
+      responses:
+        '200':
+          description: Результат найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationResult'
+        '404':
+          description: Результат не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: RESULT_NOT_FOUND
+                message: Classification result 123 not found
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /categories:
+    get:
+      tags: [Categories]
+      operationId: listCategories
+      summary: Получить список категорий
+      description: |
+        Возвращает категории, которые умеет распознавать текущая версия модели
+        (1000 классов ImageNet-1k). Поддерживает постраничный вывод и поиск по названию.
+      parameters:
+        - name: search
+          in: query
+          required: false
+          description: Подстрока для поиска в названии категории (на английском)
+          schema:
+            type: string
+          example: cat
+        - name: limit
+          in: query
+          required: false
+          description: Количество категорий на странице
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          required: false
+          description: Смещение от начала списка
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Список категорий
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryList'
+        '400':
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_PARAMETER
+                message: Parameter 'limit' must be between 1 and 100
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /categories/{categoryId}:
+    get:
+      tags: [Categories]
+      operationId: getCategory
+      summary: Получить категорию по идентификатору
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          description: Индекс класса ImageNet-1k (0–999)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 999
+          example: 281
+      responses:
+        '200':
+          description: Категория найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '404':
+          description: Категория не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: CATEGORY_NOT_FOUND
+                message: Category 1500 not found
+
+components:
+  parameters:
+    ClassificationId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор результата классификации
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+      example: 123
+
+  schemas:
+    ClassificationRequest:
+      type: object
+      required:
+        - image
+      properties:
+        image:
+          type: string
+          format: binary
+          description: Файл изображения (JPEG или PNG, не более 10 МБ)
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 5
+          description: Сколько наиболее вероятных категорий вернуть
+
+    Category:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: integer
+          description: Индекс класса ImageNet-1k
+          example: 281
+        label:
+          type: string
+          description: Название категории (на английском, как в ImageNet-1k)
+          example: tabby, tabby cat
+
+    CategoryList:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Общее количество найденных категорий
+          example: 1000
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    Prediction:
+      type: object
+      required: [rank, category, confidence]
+      properties:
+        rank:
+          type: integer
+          description: Позиция в списке (1 — наиболее вероятная категория)
+          example: 1
+        category:
+          $ref: '#/components/schemas/Category'
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Вероятность категории по оценке модели (softmax)
+          example: 0.94
+
+    ClassificationResult:
+      type: object
+      required: [id, predictions, lowConfidence, modelVersion, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Идентификатор результата
+          example: 123
+        predictions:
+          type: array
+          description: Категории, отсортированные по убыванию уверенности
+          items:
+            $ref: '#/components/schemas/Prediction'
+          example:
+            - rank: 1
+              category: { id: 281, label: 'tabby, tabby cat' }
+              confidence: 0.94
+            - rank: 2
+              category: { id: 282, label: 'tiger cat' }
+              confidence: 0.04
+        lowConfidence:
+          type: boolean
+          description: true, если уверенность лучшей категории ниже порога 0.5
+          example: false
+        modelVersion:
+          type: string
+          description: Модель, выполнившая классификацию
+          example: google/vit-base-patch16-224
+        processingTimeMs:
+          type: integer
+          description: Время обработки изображения моделью, мс
+          example: 182
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-11-05T12:30:00Z'
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки
+          example: UNSUPPORTED_FORMAT
+        message:
+          type: string
+          description: Описание ошибки
+          example: Only JPEG and PNG images are supported
+
+  responses:
+    InternalError:
+      description: Внутренняя ошибка сервиса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: INTERNAL_ERROR
+            message: Unexpected server error
+    ModelUnavailable:
+      description: ML-модель временно недоступна
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: MODEL_UNAVAILABLE
+            message: Model is temporarily unavailable, try again later
